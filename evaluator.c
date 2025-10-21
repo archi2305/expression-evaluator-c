@@ -78,6 +78,31 @@ void infixToPostfix(char* infix, char* postfix) {
 
     postfix[k] = '\0'; // null-terminate string
 }
+int evaluatePostfix(char* postfix) {
+    Stack s;
+    init(&s);
+
+    for (int i = 0; i < strlen(postfix); i++) {
+        char c = postfix[i];
+
+        if (isdigit(c)) { // Operand
+            push(&s, c - '0'); // Convert char to int
+        } else { // Operator
+            int val2 = pop(&s);
+            int val1 = pop(&s);
+
+            switch(c) {
+                case '+': push(&s, val1 + val2); break;
+                case '-': push(&s, val1 - val2); break;
+                case '*': push(&s, val1 * val2); break;
+                case '/': push(&s, val1 / val2); break;
+            }
+        }
+    }
+
+    return pop(&s); // Final result
+}
+
 int main() {
     char infix[100], postfix[100];
 
@@ -88,5 +113,9 @@ int main() {
 
     printf("Postfix expression: %s\n", postfix);
 
+    int result = evaluatePostfix(postfix);
+    printf("Result: %d\n", result);
+
     return 0;
 }
+
