@@ -1,49 +1,88 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h> // For isdigit()
+#include <ctype.h>
+#include <math.h>
+
+// 🎨 COLORS
+#define RED     "\x1b[31m"
+#define GREEN   "\x1b[32m"
+#define YELLOW  "\x1b[33m"
+#define BLUE    "\x1b[34m"
+#define MAGENTA "\x1b[35m"
+#define CYAN    "\x1b[36m"
+#define RESET   "\x1b[0m"
+#define BOLD    "\x1b[1m"
 
 #define MAX 100
 
+// ===================== CHAR STACK (for infix→postfix) =====================
 typedef struct {
     char items[MAX];
     int top;
-} Stack;
-void init(Stack* s) {
-    s->top = -1;
-}
-void push(Stack* s, char c) {
+} CharStack;
+
+void initChar(CharStack* s) { s->top = -1; }
+int isEmptyChar(CharStack* s) { return s->top == -1; }
+
+void pushChar(CharStack* s, char c) {
     if (s->top == MAX - 1) {
-        printf("Stack Overflow\n");
-        return;
+        printf(RED "❌ Stack Overflow!\n" RESET);
+        exit(1);
     }
     s->items[++(s->top)] = c;
 }
 
-char pop(Stack* s) {
-    if (s->top == -1) {
-        return '\0'; // empty stack
+char popChar(CharStack* s) {
+    if (isEmptyChar(s)) {
+        printf(RED "❌ Stack Underflow!\n" RESET);
+        exit(1);
     }
     return s->items[(s->top)--];
 }
 
-char peek(Stack* s) {
-    if (s->top == -1) return '\0';
+char peekChar(CharStack* s) {
+    if (isEmptyChar(s)) return '\0';
     return s->items[s->top];
 }
 
-int isEmpty(Stack* s) {
-    return s->top == -1;
-}
 int precedence(char op) {
     switch(op) {
         case '+':
         case '-': return 1;
         case '*':
         case '/': return 2;
+        case '^': return 3;
     }
     return 0;
 }
+
+// ===================== DOUBLE STACK (for evaluation) =====================
+typedef struct {
+    double items[MAX];
+    int top;
+} DoubleStack;
+
+void initDouble(DoubleStack* s) { s->top = -1; }
+int isEmptyDouble(DoubleStack* s) { return s->top == -1; }
+
+void pushDouble(DoubleStack* s, double val) {
+    if (s->top == MAX - 1) {
+        printf(RED "❌ Stack Overflow!\n" RESET);
+        exit(1);
+    }
+    s->items[++(s->top)] = val;
+}
+
+double popDouble(DoubleStack* s) {
+    if (isEmptyDouble(s)) {
+        printf(RED "❌ Stack Underflow!\n" RESET);
+        exit(1);
+    }
+    return s->items[(s->top)--];
+}
+
+// ===================== QUEUE (History) =====================
 typedef struct {
     char expressions[10][100];
     int front, rear, count;
@@ -57,7 +96,7 @@ void initQueue(Queue* q) {
 
 void enqueue(Queue* q, char* expr) {
     if (q->count == 10) {
-        q->front = (q->front + 1) % 10; // overwrite oldest
+        q->front = (q->front + 1) % 10;
         q->count--;
     }
     q->rear = (q->rear + 1) % 10;
@@ -66,7 +105,7 @@ void enqueue(Queue* q, char* expr) {
 }
 
 void showHistory(Queue* q) {
-    printf("\nRecent Calculations:\n");
+    printf(BOLD YELLOW "\n📜 Expression History:\n" RESET);
     if (q->count == 0) {
         printf("No history available.\n");
         return;
@@ -77,145 +116,178 @@ void showHistory(Queue* q) {
     }
 }
 
-void infixToPostfix(char* infix, char* postfix) {
-    Stack s;
-    init(&s);
-    int k = 0;
-    int i = 0;
+void clearHistory(Queue* q) {
+    q->front = 0;
+    q->rear = -1;
+    q->count = 0;
+    printf(GREEN "✅ History cleared!\n" RESET);
+}
 
-    while (infix[i] != '\0') {
+// ===================== INFIX → POSTFIX =====================
+void infixToPostfix(char* infix, char* postfix) {
+    CharStack s;
+    initChar(&s);
+    int k = 0;
+
+    for (int i = 0; infix[i] != '\0'; i++) {
         char c = infix[i];
 
-        if (isdigit(c)) {
-            // Extract full number
-            while (isdigit(infix[i])) {
+        if (isdigit(c) || c == '.') {
+            // multi-digit or float
+            while (isdigit(infix[i]) || infix[i] == '.') {
                 postfix[k++] = infix[i++];
             }
-            postfix[k++] = ' '; // space to separate numbers
+            postfix[k++] = ' ';
             i--;
         }
         else if (c == '(') {
-            push(&s, c);
+            pushChar(&s, c);
         }
         else if (c == ')') {
-            while (!isEmpty(&s) && peek(&s) != '(') {
-                postfix[k++] = pop(&s);
+            while (!isEmptyChar(&s) && peekChar(&s) != '(') {
+                postfix[k++] = popChar(&s);
                 postfix[k++] = ' ';
             }
-            pop(&s);
+            if (isEmptyChar(&s)) {
+                printf(RED "❌ Unbalanced parentheses!\n" RESET);
+                exit(1);
+            }
+            popChar(&s);
         }
-        else if (c == '+' || c == '-' || c == '*' || c == '/') {
-            while (!isEmpty(&s) && precedence(peek(&s)) >= precedence(c)) {
-                postfix[k++] = pop(&s);
+        else if (c == '+' || c == '-' || c == '*' || c == '/' || c == '^') {
+            while (!isEmptyChar(&s) &&
+                  ((precedence(peekChar(&s)) > precedence(c)) ||
+                   (precedence(peekChar(&s)) == precedence(c) && c != '^')) &&
+                   peekChar(&s) != '(') {
+                postfix[k++] = popChar(&s);
                 postfix[k++] = ' ';
             }
-            push(&s, c);
+            pushChar(&s, c);
         }
-        i++;
+        else if (isspace(c)) {
+            continue;
+        }
+        else {
+            printf(RED "❌ Invalid character '%c'!\n" RESET, c);
+            exit(1);
+        }
     }
 
-    while (!isEmpty(&s)) {
-        postfix[k++] = pop(&s);
+    while (!isEmptyChar(&s)) {
+        if (peekChar(&s) == '(') {
+            printf(RED "❌ Unbalanced parentheses!\n" RESET);
+            exit(1);
+        }
+        postfix[k++] = popChar(&s);
         postfix[k++] = ' ';
     }
 
     postfix[k] = '\0';
 }
 
-int evaluatePostfix(char* postfix) {
-    Stack s;
-    init(&s);
+// ===================== POSTFIX EVALUATION =====================
+double evaluatePostfix(char* postfix) {
+    DoubleStack s;
+    initDouble(&s);
+
     int i = 0;
-
     while (postfix[i] != '\0') {
-        if (isdigit(postfix[i])) {
-            int num = 0;
-            while (isdigit(postfix[i])) {
-                num = num * 10 + (postfix[i] - '0');
-                i++;
-            }
-            push(&s, num);
+        if (isspace(postfix[i])) {
+            i++;
+            continue;
         }
-        else if (postfix[i] == '+' || postfix[i] == '-' || 
-                 postfix[i] == '*' || postfix[i] == '/') {
 
-            int val2 = pop(&s);
-            int val1 = pop(&s);
+        if (isdigit(postfix[i]) || postfix[i] == '.') {
+            char numStr[30];
+            int k = 0;
+            while (isdigit(postfix[i]) || postfix[i] == '.') {
+                numStr[k++] = postfix[i++];
+            }
+            numStr[k] = '\0';
+            double num = atof(numStr);
+            pushDouble(&s, num);
+        }
+        else if (postfix[i] == '+' || postfix[i] == '-' ||
+                 postfix[i] == '*' || postfix[i] == '/' || postfix[i] == '^') {
+
+            double val2 = popDouble(&s);
+            double val1 = popDouble(&s);
 
             switch (postfix[i]) {
-                case '+': push(&s, val1 + val2); break;
-                case '-': push(&s, val1 - val2); break;
-                case '*': push(&s, val1 * val2); break;
-                case '/': 
+                case '+': pushDouble(&s, val1 + val2); break;
+                case '-': pushDouble(&s, val1 - val2); break;
+                case '*': pushDouble(&s, val1 * val2); break;
+                case '/':
                     if (val2 == 0) {
-                        printf("Error: Division by zero!\n");
+                        printf(RED "❌ Division by zero!\n" RESET);
                         exit(1);
                     }
-                    push(&s, val1 / val2); 
+                    pushDouble(&s, val1 / val2);
+                    break;
+                case '^':
+                    pushDouble(&s, pow(val1, val2));
                     break;
             }
         }
         i++;
     }
 
-    return pop(&s);
-}
-int isValidChar(char c) {
-    // Allow digits, operators, parentheses
-    return (isdigit(c) || c=='+' || c=='-' || c=='*' || c=='/' || c=='(' || c==')');
+    return popDouble(&s);
 }
 
-int areParenthesesBalanced(char* exp) {
-    Stack s;
-    init(&s);
-    for (int i = 0; i < strlen(exp); i++) {
-        if (exp[i] == '(')
-            push(&s, '(');
-        else if (exp[i] == ')') {
-            if (isEmpty(&s))
-                return 0;  // more ')' than '('
-            pop(&s);
-        }
-    }
-    return isEmpty(&s);  // should be empty if balanced
+// ===================== MENU =====================
+void showMenu() {
+    printf(BOLD CYAN "\n======= EXPRESSION EVALUATOR =======\n" RESET);
+    printf(YELLOW "1. Evaluate Expression\n" RESET);
+    printf(YELLOW "2. Show History\n" RESET);
+    printf(YELLOW "3. Clear History\n" RESET);
+    printf(YELLOW "4. Exit\n" RESET);
+    printf(BLUE "------------------------------------\n" RESET);
+    printf(GREEN "Enter your choice: " RESET);
 }
 
-
+// ===================== MAIN =====================
 int main() {
     char infix[100], postfix[100];
     Queue history;
     initQueue(&history);
-    int choice = 1;
+    int choice;
 
-    while (choice) {
-        printf("\nEnter infix expression (e.g., 3+4*2): ");
-        scanf("%s", infix);
+    do {
+        showMenu();
+        scanf("%d", &choice);
+        getchar(); // clear newline from buffer
 
-        for (int i = 0; i < strlen(infix); i++) {
-            if (!isValidChar(infix[i])) {
-                printf("Error: Invalid input!\n");
-                exit(1);
+        switch (choice) {
+            case 1: {
+                printf(YELLOW "\nEnter infix expression: " RESET);
+                scanf(" %[^\n]", infix);
+
+                infixToPostfix(infix, postfix);
+                printf(CYAN "Postfix: %s\n" RESET, postfix);
+
+                double result = evaluatePostfix(postfix);
+                printf(GREEN "✅ Result: %.2lf\n" RESET, result);
+
+                char record[120];
+                sprintf(record, "%s = %.2lf", infix, result);
+                enqueue(&history, record);
+                break;
             }
+            case 2:
+                showHistory(&history);
+                break;
+            case 3:
+                clearHistory(&history);
+                break;
+            case 4:
+                printf(MAGENTA "👋 Exiting program. Goodbye!\n" RESET);
+                break;
+            default:
+                printf(RED "❌ Invalid choice! Try again.\n" RESET);
         }
 
-        infixToPostfix(infix, postfix);
-        printf("Postfix expression: %s\n", postfix);
-
-        int result = evaluatePostfix(postfix);
-        printf("Result: %d\n", result);
-
-        char record[100];
-        sprintf(record, "%s = %d", infix, result);
-        enqueue(&history, record);
-
-        printf("\nDo you want to see history (1=Yes, 0=No)? ");
-        int view;
-        scanf("%d", &view);
-        if (view == 1) showHistory(&history);
-
-        printf("\nDo you want to continue (1=Yes, 0=No)? ");
-        scanf("%d", &choice);
-    }
+    } while (choice != 4);
 
     return 0;
 }
